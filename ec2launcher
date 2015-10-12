@@ -434,6 +434,11 @@ def main():
             for load_balancer in cfg.load_balancers:
                 ctx.elb.register_instances(load_balancer, [i for i in instance_ids])
 
+        reservations = ctx.ec2.get_all_instances(instance_ids)
+        instances = [i for r in reservations for i in r.instances]
+        for i in instances:
+            print "{}: {}".format(i.id, i.ip_address)
+
 
 if __name__ == "__main__":
     main()
