@@ -1,0 +1,439 @@
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+
+import base64
+import os
+import sys
+import getopt
+import cjson
+import time
+
+import boto
+import boto.ec2
+import boto.ec2.blockdevicemapping
+import boto.ec2.elb
+import boto.s3
+import boto.vpc
+
+r"""
+This script simplifies the process to spawn instances on EC2 built from scratch
+on top of Amazon's original AMI.
+
+There are two parts to this task. The first is to create the instance, and the
+second is to apply patches to it.
+
+
+Part 1: Create the instance
+
+A few things are needed:
+* authentication (profile or keys)
+* region (e.g. us-east-1)
+* image name (amzn-2015.09...)
+* virtualization type (hvm, pv)
+* instance type (e.g. m1.small)
+* destination (availability zone or subnet id)
+* role
+* security groups
+
+Ideally, a few tweaks are:
+* automatically attach block devices
+* (optionally) use spot pricing
+* add to load balancer
+* set tags
+* set root volume size
+* set key
+
+
+"""
+
+
+EC2_INSTANCE_INFO = {
+    "t2.micro": {"price": 0.013, "num_block_devices": 0},
+    "t1.micro": {"price": 0.02, "num_block_devices": 0},
+    "t2.small": {"price": 0.026, "num_block_devices": 0},
+    "m1.small": {"price": 0.044, "num_block_devices": 1},
+    "t2.medium": {"price": 0.052, "num_block_devices": 0},
+    "m3.medium": {"price": 0.067, "num_block_devices": 1},
+    "m1.medium": {"price": 0.087, "num_block_devices": 1},
+    "t2.large": {"price": 0.104, "num_block_devices": 0},
+    "c3.large": {"price": 0.105, "num_block_devices": 2},
+    "c4.large": {"price": 0.11, "num_block_devices": 0},
+    "m4.large": {"price": 0.126, "num_block_devices": 0},
+    "c1.medium": {"price": 0.13, "num_block_devices": 1},
+    "m3.large": {"price": 0.133, "num_block_devices": 1},
+    "r3.large": {"price": 0.175, "num_block_devices": 1},
+    "m1.large": {"price": 0.175, "num_block_devices": 2},
+    "c3.xlarge": {"price": 0.21, "num_block_devices": 2},
+    "c4.xlarge": {"price": 0.22, "num_block_devices": 0},
+    "m2.xlarge": {"price": 0.245, "num_block_devices": 1},
+    "m4.xlarge": {"price": 0.252, "num_block_devices": 0},
+    "m3.xlarge": {"price": 0.266, "num_block_devices": 2},
+    "r3.xlarge": {"price": 0.35, "num_block_devices": 1},
+    "m1.xlarge": {"price": 0.35, "num_block_devices": 4},
+    "c3.2xlarge": {"price": 0.42, "num_block_devices": 2},
+    "c4.2xlarge": {"price": 0.441, "num_block_devices": 0},
+    "m2.2xlarge": {"price": 0.49, "num_block_devices": 1},
+    "m4.2xlarge": {"price": 0.504, "num_block_devices": 0},
+    "c1.xlarge": {"price": 0.52, "num_block_devices": 4},
+    "m3.2xlarge": {"price": 0.532, "num_block_devices": 2},
+    "g2.2xlarge": {"price": 0.65, "num_block_devices": 1},
+    "d2.xlarge": {"price": 0.69, "num_block_devices": 3},
+    "r3.2xlarge": {"price": 0.7, "num_block_devices": 1},
+    "c3.4xlarge": {"price": 0.84, "num_block_devices": 2},
+    "i2.xlarge": {"price": 0.853, "num_block_devices": 1},
+    "c4.4xlarge": {"price": 0.882, "num_block_devices": 0},
+    "m2.4xlarge": {"price": 0.98, "num_block_devices": 2},
+    "m4.4xlarge": {"price": 1.008, "num_block_devices": 0},
+    "d2.2xlarge": {"price": 1.38, "num_block_devices": 6},
+    "r3.4xlarge": {"price": 1.4, "num_block_devices": 1},
+    "c3.8xlarge": {"price": 1.68, "num_block_devices": 2},
+    "i2.2xlarge": {"price": 1.705, "num_block_devices": 2},
+    "c4.8xlarge": {"price": 1.763, "num_block_devices": 0},
+    "cc2.8xlarge": {"price": 2, "num_block_devices": 4},
+    "cg1.4xlarge": {"price": 2.1, "num_block_devices": 2},
+    "m4.10xlarge": {"price": 2.52, "num_block_devices": 0},
+    "g2.8xlarge": {"price": 2.6, "num_block_devices": 2},
+    "d2.4xlarge": {"price": 2.76, "num_block_devices": 12},
+    "r3.8xlarge": {"price": 2.8, "num_block_devices": 2},
+    "hi1.4xlarge": {"price": 3.1, "num_block_devices": 2},
+    "i2.4xlarge": {"price": 3.41, "num_block_devices": 4},
+    "cr1.8xlarge": {"price": 3.5, "num_block_devices": 2},
+    "hs1.8xlarge": {"price": 4.6, "num_block_devices": 24},
+    "d2.8xlarge": {"price": 5.52, "num_block_devices": 24},
+    "i2.8xlarge": {"price": 6.82, "num_block_devices": 8}
+}
+
+
+DEVICE_LETTER = []
+
+for i in xrange(1, 26):
+    DEVICE_LETTER.append(chr(ord('a')+i))
+for i in xrange(0, 26):
+    for j in xrange(0, 26):
+        DEVICE_LETTER.append(chr(ord('a')+i) + chr(ord('a')+j))
+
+
+def make_block_device_map(image, instance_type, root_volume_size=None):
+    import boto.ec2.blockdevicemapping
+
+    block_device_mapping = boto.ec2.blockdevicemapping.BlockDeviceMapping()
+
+    if root_volume_size and (image.block_device_mapping['/dev/xvda'].size != root_volume_size):
+        root_volume = boto.ec2.blockdevicemapping.BlockDeviceType()
+        root_volume.size = root_volume_size
+        block_device_mapping['/dev/xvda'] = root_volume
+
+    for i in xrange(EC2_INSTANCE_INFO[instance_type]["num_block_devices"]):
+        block_device_mapping['/dev/sd' + DEVICE_LETTER[i]] = \
+            boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
+
+    if len(block_device_mapping) > 0:
+        return block_device_mapping
+    return None
+
+
+def lookup_ami_id(ec2, name):
+    """Returns AMI id for `name`"""
+
+    images = ec2.get_all_images(filters={'name': [name]})
+    if len(images) != 1:
+        raise RuntimeError('cannot find exactly one image')
+    return images[0]
+
+
+def lookup_security_group_ids(ec2, names):
+    if not names:
+        return None
+    return [x.id for x in ec2.get_all_security_groups(filters={'group_name': names})]
+
+
+class Configuration(object):
+    def __init__(self):
+        # aws profile name
+        self.profile = None
+        # aws region name
+        self.region = None
+        # ami image name
+        self.image = None
+        # ec2 instance type
+        self.instance_type = None
+        # ec2 availability zone
+        self.placement = None
+        # subnet id
+        self.subnet = None
+        # key pair name
+        self.key = None
+        # iam instance profile name
+        self.instance_profile = None
+        # security group names (list)
+        self.security_groups = None
+        # instance tags to set (dict (str->str))
+        self.tags = None
+        # root volume size (number, in ??)
+        self.root_volume_size = None
+        # elastic load balancers (list (str))
+        self.load_balancers = None
+        # instance user data (str)
+        self.user_data_b64 = None
+        # use spot pricing
+        self.spot = False
+        # dry run
+        self.dry_run = False
+        # instance name
+        self.name = None
+
+    @staticmethod
+    def load_configurations(*args):
+        filenames = ['/etc/ec2launcher', '~/.ec2launcher', './.ec2launcher']
+        if args:
+            filenames.extend(reversed(*args))
+        configurations = dict()
+        for filename in filenames:
+            try:
+                with open(os.path.expanduser(filename), 'r') as in_file:
+                    value = cjson.decode(in_file.read())
+                    if isinstance(value, dict):
+                        for k, v in value.iteritems():
+                            configurations[k] = v
+            except:
+                pass
+        return configurations
+
+    def apply_configuration(self, configuration):
+        if not isinstance(configuration, dict):
+            raise ValueError()
+        # TODO make this more robust
+        valid_keys = {
+                "profile",
+                "region",
+                "image",
+                "instance_type",
+                "placement",
+                "subnet",
+                "key",
+                "instance_profile",
+                "security_groups",
+                "tags",
+                "root_volume_size",
+                "load_balancers",
+                "user_data_b64",
+                "spot",
+                "name"
+            }
+        for k, v in configuration.iteritems():
+            if k not in valid_keys:
+                raise ValueError()
+            setattr(self, k, v)
+
+    @staticmethod
+    def usage():
+        print >> sys.stderr, "usage: {0} [option]*".format(os.path.basename(sys.argv[0]))
+        print >> sys.stderr, "Options and arguments:"
+        print >> sys.stderr, "  -c, --configuration <arg>    : local configuration name"
+        print >> sys.stderr, "  -p, --profile <arg>          : aws credentials profile"
+        print >> sys.stderr, "  -r, --region <arg>           : aws region"
+        print >> sys.stderr, "  --image <arg>                : ami image name"
+        print >> sys.stderr, "  -t, --instance-type <arg>    : ec2 instance type"
+        print >> sys.stderr, "  --placement <arg>            : ec2 availability zone"
+        print >> sys.stderr, "  --subnet <arg>               : vpc subnet name"
+        print >> sys.stderr, "  --key <arg>                  : ec2 key pair name"
+        print >> sys.stderr, "  --instance-profile <arg>     : iam instance profile name"
+        print >> sys.stderr, "  --security-groups <arg>      : ec2 security group names (comma separated)"
+        print >> sys.stderr, "  --tags <arg>                 : instance tags as JSON string"
+        print >> sys.stderr, "  --root-volume-size <arg>     : root volume size in GB"
+        print >> sys.stderr, "  --load-balancers <arg>       : load balancer names (comma separated)"
+        print >> sys.stderr, "  --user-data-file <arg>       : file containing instance user data"
+        print >> sys.stderr, "  --spot, --no-spot            : use spot pricing (or not)"
+        print >> sys.stderr, "  --dry-run                    : dry run"
+        print >> sys.stderr, "  -n, --name                   : ec2 instance name"
+        sys.exit(1)
+
+    def parse_command_line(self):
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], "c:p:r:t:n:", [
+                "configuration=",
+                "profile=",
+                "region=",
+                "image=",
+                "instance-type=",
+                "placement=",
+                "subnet=",
+                "key=",
+                "instance-profile=",
+                "security-groups=",
+                "tags=",
+                "root-volume-size=",
+                "load-balancers=",
+                "user-data-file=",
+                "spot",
+                "no-spot",
+                "dry-run",
+                "name="
+            ])
+        except getopt.GetoptError as err:
+            print >> sys.stderr, err
+            Configuration.usage()
+
+        configurations = Configuration.load_configurations()
+        if "default" in configurations:
+            self.apply_configuration(configurations["default"])
+        for opt, arg in opts:
+            if opt in ('-c', '--configuration'):
+                if arg in configurations:
+                    self.apply_configuration(configurations[arg])
+            elif opt in ('-p', '--profile'):
+                self.profile = arg
+            elif opt in ('-r', '--region'):
+                self.region = arg
+            elif opt == '--image':
+                self.image = arg
+            elif opt in ('-t', '--instance-type'):
+                self.instance_type = arg
+            elif opt == '--placement':
+                self.placement = arg
+            elif opt == '--subnet':
+                self.subnet = arg
+            elif opt == '--key':
+                self.key = arg
+            elif opt == '--instance-profile':
+                self.instance_profile = arg
+            elif opt == '--security-groups':
+                self.security_groups = arg.split(',')
+            elif opt == '--tags':
+                self.tags = cjson.decode(arg)
+            elif opt == '--root-volume-size':
+                self.root_volume_size = int(arg)
+            elif opt == '--load-balancers':
+                self.load_balancers = arg.split(',')
+            elif opt == '--user-data-file':
+                with open(arg, 'r') as in_file:
+                    self.user_data_b64 = base64.b64encode(in_file.read())
+            elif opt == '--spot':
+                self.spot = True
+            elif opt == '--no-spot':
+                self.spot = False
+            elif opt == '--dry-run':
+                self.dry_run = True
+            elif opt in ('-n', '--name'):
+                self.name = arg
+            else:
+                assert False
+
+
+class Context(object):
+    def __init__(self):
+        self.ec2 = None
+        self.vpc = None
+        self.s3 = None
+        self.elb = None
+        self.image = None
+        self.image_id = None
+        self.block_device_mapping = None
+        self.security_group_ids = None
+        self.subnet_id = None
+
+
+def main():
+    # ==== USER CONFIGURATION ====
+    cfg = Configuration()
+    cfg.parse_command_line()
+
+    print "configured"
+
+    # ==== MAP CONFIGURATION TO AWS IDS ====
+
+    ctx = Context()
+    ctx.ec2 = boto.ec2.connect_to_region(cfg.region, profile_name=cfg.profile)
+    ctx.vpc = boto.vpc.connect_to_region(cfg.region, profile_name=cfg.profile)
+    ctx.s3 = boto.s3.connect_to_region(cfg.region, profile_name=cfg.profile)
+    ctx.elb = boto.ec2.elb.connect_to_region(cfg.region, profile_name=cfg.profile)
+
+    print "connected"
+
+    # -- find ami image id --
+
+    ctx.image = lookup_ami_id(ctx.ec2, cfg.image)
+    ctx.image_id = ctx.image.id
+
+    print "ami image '{}' found as '{}'".format(cfg.image, ctx.image_id)
+
+    # -- find placement or subnet id --
+
+    if cfg.subnet:
+        subnets = [s for s in ctx.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == cfg.subnet)]
+        if subnets:
+            if len(subnets) > 1:
+                raise ValueError("too many matching subnets")
+            ctx.subnet_id = subnets[0].id
+
+    print "subnet '{}' found as '{}'".format(cfg.subnet, ctx.subnet_id)
+
+    # -- create block device mapping --
+
+    ctx.block_device_mapping = make_block_device_map(ctx.image, cfg.instance_type, cfg.root_volume_size)
+
+    # -- find security group ids --
+
+    ctx.security_group_ids = lookup_security_group_ids(ctx.ec2, cfg.security_groups)
+
+    create_kwargs = {
+        'instance_type': cfg.instance_type,
+        'dry_run': cfg.dry_run
+    }
+
+    if ctx.subnet_id:
+        create_kwargs['subnet_id'] = ctx.subnet_id
+    elif cfg.placement:
+        create_kwargs['placement'] = cfg.placement
+
+    if cfg.key:
+        create_kwargs['key_name'] = cfg.key
+
+    if cfg.instance_profile:
+        create_kwargs['instance_profile_name'] = cfg.instance_profile
+
+    if ctx.security_group_ids:
+        create_kwargs['security_group_ids'] = ctx.security_group_ids
+
+    if ctx.block_device_mapping:
+        create_kwargs['block_device_map'] = ctx.block_device_mapping
+
+    if cfg.user_data_b64:
+        create_kwargs['user_data'] = cfg.user_data_b64
+
+    instance_ids = []
+    if cfg.spot:
+        result = ctx.ec2.request_spot_instances(EC2_INSTANCE_INFO[cfg.instance_type]["price"], ctx.image_id, **create_kwargs)
+        spot_request_ids = [x.id for x in result]
+        for spot_request_id in spot_request_ids:
+            state = 'open'
+            while state == 'open':
+                print "Waiting on spot request..."
+                time.sleep(5)
+                spot = ctx.ec2.get_all_spot_instance_requests(spot_request_id)[0]
+                state = spot.state
+            if state != 'active':
+                print "Failed to create instance."
+                continue
+            instance_ids.append(spot.instance_id)
+    else:
+        result = ctx.ec2.run_instances(ctx.image_id, **create_kwargs)
+        for i in result.instances:
+            instance_ids.append(i.id)
+
+    if instance_ids:
+        print "Instances '{}' created.".format(', '.join(instance_ids))
+
+        if cfg.name:
+            ctx.ec2.create_tags([i for i in instance_ids], {"Name": cfg.name}, dry_run=cfg.dry_run)
+
+        if cfg.tags:
+            ctx.ec2.create_tags([i for i in instance_ids], cfg.tags, dry_run=cfg.dry_run)
+
+        if not cfg.dry_run and cfg.load_balancers:
+            for load_balancer in cfg.load_balancers:
+                ctx.elb.register_instances(load_balancer, [i for i in instance_ids])
+
+
+if __name__ == "__main__":
+    main()
