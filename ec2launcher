@@ -181,6 +181,10 @@ class Configuration(object):
         self.dry_run = False
         # instance name
         self.name = None
+        # number of instances to launch
+        self.count = None
+        # max price
+        self.price = None
 
     @staticmethod
     def load_configurations(*args):
@@ -218,7 +222,9 @@ class Configuration(object):
                 "load_balancers",
                 "user_data_b64",
                 "spot",
-                "name"
+                "name",
+                "count",
+                "price"
             }
         for k, v in configuration.iteritems():
             if k not in valid_keys:
@@ -245,7 +251,9 @@ class Configuration(object):
         print >> sys.stderr, "  --user-data-file <arg>       : file containing instance user data"
         print >> sys.stderr, "  --spot, --no-spot            : use spot pricing (or not)"
         print >> sys.stderr, "  --dry-run                    : dry run"
-        print >> sys.stderr, "  -n, --name                   : ec2 instance name"
+        print >> sys.stderr, "  --name                       : ec2 instance name"
+        print >> sys.stderr, "  -n, --count                  : number of instances to launch"
+        print >> sys.stderr, "  --price                      : max price"
         sys.exit(1)
 
     def parse_command_line(self):
@@ -268,7 +276,9 @@ class Configuration(object):
                 "spot",
                 "no-spot",
                 "dry-run",
-                "name="
+                "name=",
+                "count=",
+                "price="
             ])
         except getopt.GetoptError as err:
             print >> sys.stderr, err
@@ -314,8 +324,12 @@ class Configuration(object):
                 self.spot = False
             elif opt == '--dry-run':
                 self.dry_run = True
-            elif opt in ('-n', '--name'):
+            elif opt == '--name':
                 self.name = arg
+            elif opt in ('-n', '--count'):
+                self.count = int(arg)
+            elif opt == '--price':
+                self.price = float(arg)
             else:
                 assert False
 
@@ -403,7 +417,14 @@ def main():
 
     instance_ids = []
     if cfg.spot:
-        result = ctx.ec2.request_spot_instances(EC2_INSTANCE_INFO[cfg.instance_type]["price"], ctx.image_id, **create_kwargs)
+        if cfg.count:
+            create_kwargs['count'] = cfg.count
+
+        price = EC2_INSTANCE_INFO[cfg.instance_type]["price"]
+        if cfg.price:
+            price = cfg.price
+
+        result = ctx.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
         spot_request_ids = [x.id for x in result]
         for spot_request_id in spot_request_ids:
             state = 'open'
@@ -417,6 +438,10 @@ def main():
                 continue
             instance_ids.append(spot.instance_id)
     else:
+        if cfg.count:
+            create_kwargs['min_count'] = cfg.count
+            create_kwargs['max_count'] = cfg.count
+        
         result = ctx.ec2.run_instances(ctx.image_id, **create_kwargs)
         for i in result.instances:
             instance_ids.append(i.id)
