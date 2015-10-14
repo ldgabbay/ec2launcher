@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from ec2launcher import Configuration, launch
+from foolaunch import Configuration, launch
 
 import cjson
 import os
