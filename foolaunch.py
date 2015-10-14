@@ -7,7 +7,7 @@ import getopt
 import base64
 import cjson
 
-import footstrap
+import foolaunch
 
 
 def usage():
@@ -63,7 +63,7 @@ def parse_command_line(cfg):
         print >> sys.stderr, err
         usage()
 
-    configurations = footstrap.load_configurations()
+    configurations = foolaunch.load_configurations()
     if "default" in configurations:
         cfg.apply_configuration(configurations["default"])
 
@@ -115,9 +115,9 @@ def parse_command_line(cfg):
 
 
 def main():
-    cfg = footstrap.Configuration()
+    cfg = foolaunch.Configuration()
     parse_command_line(cfg)
-    footstrap.launch(cfg)
+    foolaunch.launch(cfg)
 
 
 if __name__ == "__main__":

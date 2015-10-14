@@ -7,7 +7,7 @@ import os
 
 
 def load_configurations(*args):
-    filenames = ['./.footstrap', '~/.footstrap', '/etc/footstrap']
+    filenames = ['./.foolaunch', '~/.foolaunch', '/etc/foolaunch']
     if args:
         filenames = list(args) + filenames
     for filename in filenames:
