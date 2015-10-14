@@ -211,12 +211,15 @@ class Configuration(object):
             setattr(self, k, v)
 
 
-class Context(object):
+class Connections(object):
     def __init__(self):
         self.ec2 = None
         self.vpc = None
-        self.s3 = None
         self.elb = None
+
+
+class Context(object):
+    def __init__(self):
         self.image = None
         self.image_id = None
         self.block_device_mapping = None
@@ -225,17 +228,19 @@ class Context(object):
 
 
 def launch(cfg):
+    conn = Connections()
+
+    conn.ec2 = boto.ec2.connect_to_region(cfg.region, profile_name=cfg.profile)
+    conn.vpc = boto.vpc.connect_to_region(cfg.region, profile_name=cfg.profile)
+    conn.elb = boto.ec2.elb.connect_to_region(cfg.region, profile_name=cfg.profile)
+
     ctx = Context()
-    ctx.ec2 = boto.ec2.connect_to_region(cfg.region, profile_name=cfg.profile)
-    ctx.vpc = boto.vpc.connect_to_region(cfg.region, profile_name=cfg.profile)
-    ctx.s3 = boto.s3.connect_to_region(cfg.region, profile_name=cfg.profile)
-    ctx.elb = boto.ec2.elb.connect_to_region(cfg.region, profile_name=cfg.profile)
 
     print "connected"
 
     # -- find ami image id --
 
-    ctx.image = lookup_ami_id(ctx.ec2, cfg.image)
+    ctx.image = lookup_ami_id(conn.ec2, cfg.image)
     ctx.image_id = ctx.image.id
 
     print "ami image '{}' found as '{}'".format(cfg.image, ctx.image_id)
@@ -243,7 +248,7 @@ def launch(cfg):
     # -- find placement or subnet id --
 
     if cfg.subnet:
-        subnets = [s for s in ctx.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == cfg.subnet)]
+        subnets = [s for s in conn.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == cfg.subnet)]
         if subnets:
             if len(subnets) > 1:
                 raise ValueError("too many matching subnets")
@@ -257,7 +262,7 @@ def launch(cfg):
 
     # -- find security group ids --
 
-    ctx.security_group_ids = lookup_security_group_ids(ctx.ec2, cfg.security_groups)
+    ctx.security_group_ids = lookup_security_group_ids(conn.ec2, cfg.security_groups)
 
     create_kwargs = {
         'instance_type': cfg.instance_type,
@@ -293,14 +298,14 @@ def launch(cfg):
         if cfg.price:
             price = cfg.price
 
-        result = ctx.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
+        result = conn.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
         spot_request_ids = [x.id for x in result]
         for spot_request_id in spot_request_ids:
             state = 'open'
             while state == 'open':
                 print "Waiting on spot request..."
                 time.sleep(5)
-                spot = ctx.ec2.get_all_spot_instance_requests(spot_request_id)[0]
+                spot = conn.ec2.get_all_spot_instance_requests(spot_request_id)[0]
                 state = spot.state
             if state != 'active':
                 print "Failed to create instance."
@@ -311,7 +316,7 @@ def launch(cfg):
             create_kwargs['min_count'] = cfg.count
             create_kwargs['max_count'] = cfg.count
         
-        result = ctx.ec2.run_instances(ctx.image_id, **create_kwargs)
+        result = conn.ec2.run_instances(ctx.image_id, **create_kwargs)
         for i in result.instances:
             instance_ids.append(i.id)
 
@@ -319,20 +324,20 @@ def launch(cfg):
         print "Instances '{}' created.".format(', '.join(instance_ids))
 
         if cfg.name:
-            ctx.ec2.create_tags([i for i in instance_ids], {"Name": cfg.name}, dry_run=cfg.dry_run)
+            conn.ec2.create_tags([i for i in instance_ids], {"Name": cfg.name}, dry_run=cfg.dry_run)
 
         if cfg.tags:
-            ctx.ec2.create_tags([i for i in instance_ids], cfg.tags, dry_run=cfg.dry_run)
+            conn.ec2.create_tags([i for i in instance_ids], cfg.tags, dry_run=cfg.dry_run)
 
         if not cfg.dry_run and cfg.load_balancers:
             for load_balancer in cfg.load_balancers:
-                ctx.elb.register_instances(load_balancer, [i for i in instance_ids])
+                conn.elb.register_instances(load_balancer, [i for i in instance_ids])
 
-        reservations = ctx.ec2.get_all_instances(instance_ids)
+        reservations = conn.ec2.get_all_instances(instance_ids)
         instances = [i for r in reservations for i in r.instances]
         for i in instances:
             print "{}: {}".format(i.id, i.ip_address)
 
-        return instances
+        return conn, instances
 
-    return []
+    return conn, []
