@@ -333,4 +333,6 @@ def launch(cfg):
         for i in instances:
             print "{}: {}".format(i.id, i.ip_address)
 
-    return instances
+        return instances
+
+    return []
