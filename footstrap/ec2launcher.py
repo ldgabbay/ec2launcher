@@ -43,23 +43,6 @@ Ideally, a few tweaks are:
 """
 
 
-def load_configurations(*args):
-    filenames = ['/etc/ec2launcher', '~/.ec2launcher', './.ec2launcher']
-    if args:
-        filenames.extend(reversed(*args))
-    configurations = dict()
-    for filename in filenames:
-        try:
-            with open(os.path.expanduser(filename), 'r') as in_file:
-                value = cjson.decode(in_file.read())
-                if isinstance(value, dict):
-                    for k, v in value.iteritems():
-                        configurations[k] = v
-        except:
-            pass
-    return configurations
-
-
 EC2_INSTANCE_INFO = {
     "t2.micro": {"price": 0.013, "num_block_devices": 0},
     "t1.micro": {"price": 0.02, "num_block_devices": 0},
