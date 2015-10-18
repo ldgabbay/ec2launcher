@@ -10,10 +10,14 @@ def load_configurations(*args):
     filenames = ['./.foolaunch', '~/.foolaunch', '/etc/foolaunch']
     if args:
         filenames = list(args) + filenames
+    body = None
     for filename in filenames:
         try:
-            with open(os.path.expanduser(filename), 'r') as in_file:
-                return cjson.decode(in_file.read())
+            with open(os.path.expanduser(filename), 'rb') as f:
+                body = f.read()
         except:
-            pass
-    return {}
+            continue
+    if body:
+        return cjson.decode(body)
+    else:
+        return {}
