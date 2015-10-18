@@ -63,14 +63,9 @@ def parse_command_line(cfg):
         print >> sys.stderr, err
         usage()
 
-    configurations = foolaunch.load_configurations()
-    if "default" in configurations:
-        cfg.apply_configuration(configurations["default"])
-
     for opt, arg in opts:
         if opt in ('-c', '--configuration'):
-            if arg in configurations:
-                cfg.apply_configuration(configurations[arg])
+            cfg.apply(arg)
         elif opt in ('-p', '--profile'):
             cfg.profile = arg
         elif opt in ('-r', '--region'):

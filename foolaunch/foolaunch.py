@@ -39,8 +39,28 @@ Ideally, a few tweaks are:
 * set root volume size
 * set key
 
-
+cfg = foolaunch.Configuration()
+cfg.apply("name")
+...
+foolaunch.launch(cfg)
 """
+
+
+def load_configurations(*args):
+    filenames = ['./.foolaunch', '~/.foolaunch', '/etc/foolaunch']
+    if args:
+        filenames = list(args) + filenames
+    body = None
+    for filename in filenames:
+        try:
+            with open(os.path.expanduser(filename), 'rb') as f:
+                body = f.read()
+        except:
+            continue
+    if body:
+        return cjson.decode(body)
+    else:
+        return {}
 
 
 EC2_INSTANCE_INFO = {
@@ -144,7 +164,8 @@ def lookup_security_group_ids(ec2, names):
 
 
 class Configuration(object):
-    def __init__(self):
+    def __init__(self, *args):
+        self._configurations = load_configurations(*args)
         # aws profile name
         self.profile = None
         # aws region name
@@ -182,7 +203,15 @@ class Configuration(object):
         # max price
         self.price = None
 
-    def apply_configuration(self, configuration):
+        if "default" in self._configurations:
+            self.apply("default")
+
+    def apply(self, label):
+        if label not in self._configurations:
+            raise ValueError("configuration {} not found".format(label))
+        self._apply(self._configurations[label])
+
+    def _apply(self, configuration):
         if not isinstance(configuration, dict):
             raise ValueError()
         # TODO make this more robust
@@ -214,6 +243,7 @@ class Configuration(object):
 class Connections(object):
     def __init__(self):
         self.ec2 = None
+        self.s3 = None
         self.vpc = None
         self.elb = None
 
@@ -231,6 +261,7 @@ def launch(cfg):
     conn = Connections()
 
     conn.ec2 = boto.ec2.connect_to_region(cfg.region, profile_name=cfg.profile)
+    conn.s3 = boto.s3.connect_to_region(cfg.region, profile_name=cfg.profile)
     conn.vpc = boto.vpc.connect_to_region(cfg.region, profile_name=cfg.profile)
     conn.elb = boto.ec2.elb.connect_to_region(cfg.region, profile_name=cfg.profile)
 
