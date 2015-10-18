@@ -253,8 +253,7 @@ def launch(cfg):
             if len(subnets) > 1:
                 raise ValueError("too many matching subnets")
             ctx.subnet_id = subnets[0].id
-
-    print "subnet '{}' found as '{}'".format(cfg.subnet, ctx.subnet_id)
+        print "subnet '{}' found as '{}'".format(cfg.subnet, ctx.subnet_id)
 
     # -- create block device mapping --
 
