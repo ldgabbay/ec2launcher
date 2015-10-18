@@ -29,9 +29,9 @@ def usage():
     print >> sys.stderr, "  --user-data-file <arg>       : file containing instance user data"
     print >> sys.stderr, "  --spot, --no-spot            : use spot pricing (or not)"
     print >> sys.stderr, "  --dry-run                    : dry run"
-    print >> sys.stderr, "  --name                       : ec2 instance name"
-    print >> sys.stderr, "  -n, --count                  : number of instances to launch"
-    print >> sys.stderr, "  --price                      : max price"
+    print >> sys.stderr, "  --name <arg>                 : ec2 instance name"
+    print >> sys.stderr, "  -n, --count <arg>            : number of instances to launch"
+    print >> sys.stderr, "  --price <arg>                : max price"
     sys.exit(1)
 
 
