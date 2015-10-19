@@ -13,7 +13,6 @@ import foo.launch
 def usage():
     print >> sys.stderr, "usage: {0} [option]*".format(os.path.basename(sys.argv[0]))
     print >> sys.stderr, "Options and arguments:"
-    print >> sys.stderr, "  -c, --configuration <arg>    : local configuration name"
     print >> sys.stderr, "  -p, --profile <arg>          : aws credentials profile"
     print >> sys.stderr, "  -r, --region <arg>           : aws region"
     print >> sys.stderr, "  --image <arg>                : ami image name"
@@ -37,8 +36,7 @@ def usage():
 
 def parse_command_line(cfg):
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "c:p:r:t:n:", [
-            "configuration=",
+        opts, args = getopt.getopt(sys.argv[1:], "p:r:t:n:", [
             "profile=",
             "region=",
             "image=",
@@ -64,9 +62,7 @@ def parse_command_line(cfg):
         usage()
 
     for opt, arg in opts:
-        if opt in ('-c', '--configuration'):
-            cfg.apply(arg)
-        elif opt in ('-p', '--profile'):
+        if opt in ('-p', '--profile'):
             cfg.profile = arg
         elif opt in ('-r', '--region'):
             cfg.region = arg
