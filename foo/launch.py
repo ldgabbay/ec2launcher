@@ -180,6 +180,29 @@ class _Context(object):
         self.subnet_id = None
 
 
+# TODO make this more robust
+_VALID_KEYS = {
+        "profile",
+        "region",
+        "image",
+        "instance_type",
+        "placement",
+        "subnet",
+        "key",
+        "instance_profile",
+        "security_groups",
+        "tags",
+        "root_volume_size",
+        "load_balancers",
+        "user_data_b64",
+        "spot",
+        "name",
+        "count",
+        "price",
+        "*"
+    }
+
+
 class Session(object):
     def __init__(self, *args):
         self._configurations = _load_configurations(*args)
@@ -226,35 +249,32 @@ class Session(object):
     def apply(self, label):
         if label not in self._configurations:
             raise ValueError("configuration {} not found".format(label))
-        self._apply(self._configurations[label])
 
-    def _apply(self, configuration):
-        if not isinstance(configuration, dict):
-            raise ValueError()
-        # TODO make this more robust
-        valid_keys = {
-                "profile",
-                "region",
-                "image",
-                "instance_type",
-                "placement",
-                "subnet",
-                "key",
-                "instance_profile",
-                "security_groups",
-                "tags",
-                "root_volume_size",
-                "load_balancers",
-                "user_data_b64",
-                "spot",
-                "name",
-                "count",
-                "price"
-            }
-        for k, v in configuration.iteritems():
-            if k not in valid_keys:
-                raise ValueError()
+        total = {}
+        self._apply(label, total)
+        for k, v in total.iteritems():
             setattr(self, k, v)
+
+    def _apply(self, label, total):
+        assert isinstance(total, dict)
+        if label not in self._configurations:
+            raise ValueError("configuration {} not found".format(label))
+        configuration = self._configurations[label]
+        if not isinstance(configuration, dict):
+            raise ValueError("configuration {} not a dict".format(label))
+
+        if "*" in configuration:
+            includes = configuration["*"]
+            if not isinstance(includes, list):
+                raise ValueError("configuration {} default (*) not a list".format(label))
+            for i in includes:
+                self._apply(i, total)
+
+        for k, v in configuration.iteritems():
+            if k != "*":
+                if k not in _VALID_KEYS:
+                    raise ValueError("invalid key {} in configuration {}".format(k, label))
+                total[k] = v
 
     def launch(self):
         conn = _Connections()
