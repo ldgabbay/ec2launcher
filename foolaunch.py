@@ -10,8 +10,10 @@ import cjson
 import foo.launch
 
 
-def usage():
-    print >> sys.stderr, "usage: {0} [option]*".format(os.path.basename(sys.argv[0]))
+def usage(*args):
+    if args:
+        print >> sys.stderr, "{0}: {1}".format(os.path.basename(sys.argv[0]), args[0])
+    print >> sys.stderr, "usage: {0} [option]* <cfg>".format(os.path.basename(sys.argv[0]))
     print >> sys.stderr, "Options and arguments:"
     print >> sys.stderr, "  -p, --profile <arg>          : aws credentials profile"
     print >> sys.stderr, "  -r, --region <arg>           : aws region"
@@ -58,8 +60,12 @@ def parse_command_line(cfg):
             "price="
         ])
     except getopt.GetoptError as err:
-        print >> sys.stderr, err
-        usage()
+        usage("bad option")
+
+    if len(args) < 1:
+        usage("missing configuration name")
+
+    cfg.apply(args[0])
 
     for opt, arg in opts:
         if opt in ('-p', '--profile'):
