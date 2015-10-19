@@ -46,7 +46,7 @@ foolaunch.launch(cfg)
 """
 
 
-def load_configurations(*args):
+def _load_configurations(*args):
     filenames = ['./.foolaunch', '~/.foolaunch', '/etc/foolaunch']
     if args:
         filenames = list(args) + filenames
@@ -63,7 +63,7 @@ def load_configurations(*args):
         return {}
 
 
-EC2_INSTANCE_INFO = {
+_EC2_INSTANCE_INFO = {
     "t2.micro": {"price": 0.013, "num_block_devices": 0},
     "t1.micro": {"price": 0.02, "num_block_devices": 0},
     "t2.small": {"price": 0.026, "num_block_devices": 0},
@@ -120,16 +120,16 @@ EC2_INSTANCE_INFO = {
 }
 
 
-DEVICE_LETTER = []
+_DEVICE_LETTER = []
 
 for i in xrange(1, 26):
-    DEVICE_LETTER.append(chr(ord('a')+i))
+    _DEVICE_LETTER.append(chr(ord('a')+i))
 for i in xrange(0, 26):
     for j in xrange(0, 26):
-        DEVICE_LETTER.append(chr(ord('a')+i) + chr(ord('a')+j))
+        _DEVICE_LETTER.append(chr(ord('a')+i) + chr(ord('a')+j))
 
 
-def make_block_device_map(image, instance_type, root_volume_size=None):
+def _make_block_device_map(image, instance_type, root_volume_size=None):
     import boto.ec2.blockdevicemapping
 
     block_device_mapping = boto.ec2.blockdevicemapping.BlockDeviceMapping()
@@ -139,8 +139,8 @@ def make_block_device_map(image, instance_type, root_volume_size=None):
         root_volume.size = root_volume_size
         block_device_mapping['/dev/xvda'] = root_volume
 
-    for i in xrange(EC2_INSTANCE_INFO[instance_type]["num_block_devices"]):
-        block_device_mapping['/dev/sd' + DEVICE_LETTER[i]] = \
+    for i in xrange(_EC2_INSTANCE_INFO[instance_type]["num_block_devices"]):
+        block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
             boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
 
     if len(block_device_mapping) > 0:
@@ -148,7 +148,7 @@ def make_block_device_map(image, instance_type, root_volume_size=None):
     return None
 
 
-def lookup_ami_id(ec2, name):
+def _lookup_ami_id(ec2, name):
     """Returns AMI id for `name`"""
 
     images = ec2.get_all_images(filters={'name': [name]})
@@ -157,15 +157,32 @@ def lookup_ami_id(ec2, name):
     return images[0]
 
 
-def lookup_security_group_ids(ec2, names):
+def _lookup_security_group_ids(ec2, names):
     if not names:
         return None
     return [x.id for x in ec2.get_all_security_groups(filters={'group_name': names})]
 
 
-class Configuration(object):
+class _Connections(object):
+    def __init__(self):
+        self.ec2 = None
+        self.s3 = None
+        self.vpc = None
+        self.elb = None
+
+
+class _Context(object):
+    def __init__(self):
+        self.image = None
+        self.image_id = None
+        self.block_device_mapping = None
+        self.security_group_ids = None
+        self.subnet_id = None
+
+
+class Session(object):
     def __init__(self, *args):
-        self._configurations = load_configurations(*args)
+        self._configurations = _load_configurations(*args)
         # aws profile name
         self.profile = None
         # aws region name
@@ -239,135 +256,117 @@ class Configuration(object):
                 raise ValueError()
             setattr(self, k, v)
 
+    def launch(self):
+        conn = _Connections()
 
-class Connections(object):
-    def __init__(self):
-        self.ec2 = None
-        self.s3 = None
-        self.vpc = None
-        self.elb = None
+        conn.ec2 = boto.ec2.connect_to_region(self.region, profile_name=self.profile)
+        conn.s3 = boto.s3.connect_to_region(self.region, profile_name=self.profile)
+        conn.vpc = boto.vpc.connect_to_region(self.region, profile_name=self.profile)
+        conn.elb = boto.ec2.elb.connect_to_region(self.region, profile_name=self.profile)
 
+        ctx = _Context()
 
-class Context(object):
-    def __init__(self):
-        self.image = None
-        self.image_id = None
-        self.block_device_mapping = None
-        self.security_group_ids = None
-        self.subnet_id = None
+        print "connected"
 
+        # -- find ami image id --
 
-def launch(cfg):
-    conn = Connections()
+        ctx.image = _lookup_ami_id(conn.ec2, self.image)
+        ctx.image_id = ctx.image.id
 
-    conn.ec2 = boto.ec2.connect_to_region(cfg.region, profile_name=cfg.profile)
-    conn.s3 = boto.s3.connect_to_region(cfg.region, profile_name=cfg.profile)
-    conn.vpc = boto.vpc.connect_to_region(cfg.region, profile_name=cfg.profile)
-    conn.elb = boto.ec2.elb.connect_to_region(cfg.region, profile_name=cfg.profile)
+        print "ami image '{}' found as '{}'".format(self.image, ctx.image_id)
 
-    ctx = Context()
+        # -- find placement or subnet id --
 
-    print "connected"
+        if self.subnet:
+            subnets = [s for s in conn.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == self.subnet)]
+            if subnets:
+                if len(subnets) > 1:
+                    raise ValueError("too many matching subnets")
+                ctx.subnet_id = subnets[0].id
+            print "subnet '{}' found as '{}'".format(self.subnet, ctx.subnet_id)
 
-    # -- find ami image id --
+        # -- create block device mapping --
 
-    ctx.image = lookup_ami_id(conn.ec2, cfg.image)
-    ctx.image_id = ctx.image.id
+        ctx.block_device_mapping = _make_block_device_map(ctx.image, self.instance_type, self.root_volume_size)
 
-    print "ami image '{}' found as '{}'".format(cfg.image, ctx.image_id)
+        # -- find security group ids --
 
-    # -- find placement or subnet id --
+        ctx.security_group_ids = _lookup_security_group_ids(conn.ec2, self.security_groups)
 
-    if cfg.subnet:
-        subnets = [s for s in conn.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == cfg.subnet)]
-        if subnets:
-            if len(subnets) > 1:
-                raise ValueError("too many matching subnets")
-            ctx.subnet_id = subnets[0].id
-        print "subnet '{}' found as '{}'".format(cfg.subnet, ctx.subnet_id)
+        create_kwargs = {
+            'instance_type': self.instance_type,
+            'dry_run': self.dry_run
+        }
 
-    # -- create block device mapping --
+        if ctx.subnet_id:
+            create_kwargs['subnet_id'] = ctx.subnet_id
+        elif self.placement:
+            create_kwargs['placement'] = self.placement
 
-    ctx.block_device_mapping = make_block_device_map(ctx.image, cfg.instance_type, cfg.root_volume_size)
+        if self.key:
+            create_kwargs['key_name'] = self.key
 
-    # -- find security group ids --
+        if self.instance_profile:
+            create_kwargs['instance_profile_name'] = self.instance_profile
 
-    ctx.security_group_ids = lookup_security_group_ids(conn.ec2, cfg.security_groups)
+        if ctx.security_group_ids:
+            create_kwargs['security_group_ids'] = ctx.security_group_ids
 
-    create_kwargs = {
-        'instance_type': cfg.instance_type,
-        'dry_run': cfg.dry_run
-    }
+        if ctx.block_device_mapping:
+            create_kwargs['block_device_map'] = ctx.block_device_mapping
 
-    if ctx.subnet_id:
-        create_kwargs['subnet_id'] = ctx.subnet_id
-    elif cfg.placement:
-        create_kwargs['placement'] = cfg.placement
+        if self.user_data_b64:
+            create_kwargs['user_data'] = self.user_data_b64
 
-    if cfg.key:
-        create_kwargs['key_name'] = cfg.key
+        instance_ids = []
+        if self.spot:
+            if self.count:
+                create_kwargs['count'] = self.count
 
-    if cfg.instance_profile:
-        create_kwargs['instance_profile_name'] = cfg.instance_profile
+            price = _EC2_INSTANCE_INFO[self.instance_type]["price"]
+            if self.price:
+                price = self.price
 
-    if ctx.security_group_ids:
-        create_kwargs['security_group_ids'] = ctx.security_group_ids
+            result = conn.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
+            spot_request_ids = [x.id for x in result]
+            for spot_request_id in spot_request_ids:
+                state = 'open'
+                while state == 'open':
+                    print "Waiting on spot request..."
+                    time.sleep(5)
+                    spot = conn.ec2.get_all_spot_instance_requests(spot_request_id)[0]
+                    state = spot.state
+                if state != 'active':
+                    print "Failed to create instance."
+                    continue
+                instance_ids.append(spot.instance_id)
+        else:
+            if self.count:
+                create_kwargs['min_count'] = self.count
+                create_kwargs['max_count'] = self.count
 
-    if ctx.block_device_mapping:
-        create_kwargs['block_device_map'] = ctx.block_device_mapping
+            result = conn.ec2.run_instances(ctx.image_id, **create_kwargs)
+            for i in result.instances:
+                instance_ids.append(i.id)
 
-    if cfg.user_data_b64:
-        create_kwargs['user_data'] = cfg.user_data_b64
+        if instance_ids:
+            print "Instances '{}' created.".format(', '.join(instance_ids))
 
-    instance_ids = []
-    if cfg.spot:
-        if cfg.count:
-            create_kwargs['count'] = cfg.count
+            if self.name:
+                conn.ec2.create_tags([i for i in instance_ids], {"Name": self.name}, dry_run=self.dry_run)
 
-        price = EC2_INSTANCE_INFO[cfg.instance_type]["price"]
-        if cfg.price:
-            price = cfg.price
+            if self.tags:
+                conn.ec2.create_tags([i for i in instance_ids], self.tags, dry_run=self.dry_run)
 
-        result = conn.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
-        spot_request_ids = [x.id for x in result]
-        for spot_request_id in spot_request_ids:
-            state = 'open'
-            while state == 'open':
-                print "Waiting on spot request..."
-                time.sleep(5)
-                spot = conn.ec2.get_all_spot_instance_requests(spot_request_id)[0]
-                state = spot.state
-            if state != 'active':
-                print "Failed to create instance."
-                continue
-            instance_ids.append(spot.instance_id)
-    else:
-        if cfg.count:
-            create_kwargs['min_count'] = cfg.count
-            create_kwargs['max_count'] = cfg.count
-        
-        result = conn.ec2.run_instances(ctx.image_id, **create_kwargs)
-        for i in result.instances:
-            instance_ids.append(i.id)
+            if not self.dry_run and self.load_balancers:
+                for load_balancer in self.load_balancers:
+                    conn.elb.register_instances(load_balancer, [i for i in instance_ids])
 
-    if instance_ids:
-        print "Instances '{}' created.".format(', '.join(instance_ids))
+            reservations = conn.ec2.get_all_instances(instance_ids)
+            instances = [i for r in reservations for i in r.instances]
+            for i in instances:
+                print "{}: {}".format(i.id, i.ip_address)
 
-        if cfg.name:
-            conn.ec2.create_tags([i for i in instance_ids], {"Name": cfg.name}, dry_run=cfg.dry_run)
+            return conn, instances
 
-        if cfg.tags:
-            conn.ec2.create_tags([i for i in instance_ids], cfg.tags, dry_run=cfg.dry_run)
-
-        if not cfg.dry_run and cfg.load_balancers:
-            for load_balancer in cfg.load_balancers:
-                conn.elb.register_instances(load_balancer, [i for i in instance_ids])
-
-        reservations = conn.ec2.get_all_instances(instance_ids)
-        instances = [i for r in reservations for i in r.instances]
-        for i in instances:
-            print "{}: {}".format(i.id, i.ip_address)
-
-        return conn, instances
-
-    return conn, []
+        return conn, []

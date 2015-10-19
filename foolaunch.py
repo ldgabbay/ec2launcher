@@ -7,7 +7,7 @@ import getopt
 import base64
 import cjson
 
-import foolaunch
+import foo.launch
 
 
 def usage():
@@ -110,9 +110,9 @@ def parse_command_line(cfg):
 
 
 def main():
-    cfg = foolaunch.Configuration()
+    cfg = foo.launch.Session()
     parse_command_line(cfg)
-    foolaunch.launch(cfg)
+    cfg.launch()
 
 
 if __name__ == "__main__":
