@@ -112,9 +112,12 @@ def parse_command_line(cfg):
 
 
 def main():
-    cfg = foolaunch.Session()
-    parse_command_line(cfg)
-    cfg.launch()
+    try:
+        cfg = foolaunch.Session()
+        parse_command_line(cfg)
+        cfg.launch()
+    except Exception as e:
+        usage(e)
 
 
 if __name__ == "__main__":
