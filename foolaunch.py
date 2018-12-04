@@ -63,65 +63,37 @@ def _load_configurations(*args):
         return {}
 
 
-_EC2_INSTANCE_INFO = {
-    "t2.micro": {"price": 0.013, "num_block_devices": 0},
-    "t1.micro": {"price": 0.02, "num_block_devices": 0},
-    "t2.small": {"price": 0.026, "num_block_devices": 0},
-    "m1.small": {"price": 0.044, "num_block_devices": 1},
-    "t2.medium": {"price": 0.052, "num_block_devices": 0},
-    "m3.medium": {"price": 0.067, "num_block_devices": 1},
-    "m1.medium": {"price": 0.087, "num_block_devices": 1},
-    "t2.large": {"price": 0.104, "num_block_devices": 0},
-    "c3.large": {"price": 0.105, "num_block_devices": 2},
-    "c4.large": {"price": 0.11, "num_block_devices": 0},
-    "m4.large": {"price": 0.126, "num_block_devices": 0},
-    "c1.medium": {"price": 0.13, "num_block_devices": 1},
-    "m3.large": {"price": 0.133, "num_block_devices": 1},
-    "r3.large": {"price": 0.175, "num_block_devices": 1},
-    "m1.large": {"price": 0.175, "num_block_devices": 2},
-    "c3.xlarge": {"price": 0.21, "num_block_devices": 2},
-    "c4.xlarge": {"price": 0.22, "num_block_devices": 0},
-    "m2.xlarge": {"price": 0.245, "num_block_devices": 1},
-    "m4.xlarge": {"price": 0.252, "num_block_devices": 0},
-    "m3.xlarge": {"price": 0.266, "num_block_devices": 2},
-    "r3.xlarge": {"price": 0.35, "num_block_devices": 1},
-    "m1.xlarge": {"price": 0.35, "num_block_devices": 4},
-    "c3.2xlarge": {"price": 0.42, "num_block_devices": 2},
-    "c4.2xlarge": {"price": 0.441, "num_block_devices": 0},
-    "m2.2xlarge": {"price": 0.49, "num_block_devices": 1},
-    "m4.2xlarge": {"price": 0.504, "num_block_devices": 0},
-    "c1.xlarge": {"price": 0.52, "num_block_devices": 4},
-    "m3.2xlarge": {"price": 0.532, "num_block_devices": 2},
-    "g2.2xlarge": {"price": 0.65, "num_block_devices": 1},
-    "d2.xlarge": {"price": 0.69, "num_block_devices": 3},
-    "r3.2xlarge": {"price": 0.7, "num_block_devices": 1},
-    "c3.4xlarge": {"price": 0.84, "num_block_devices": 2},
-    "i2.xlarge": {"price": 0.853, "num_block_devices": 1},
-    "c4.4xlarge": {"price": 0.882, "num_block_devices": 0},
-    "m2.4xlarge": {"price": 0.98, "num_block_devices": 2},
-    "m4.4xlarge": {"price": 1.008, "num_block_devices": 0},
-    "d2.2xlarge": {"price": 1.38, "num_block_devices": 6},
-    "r3.4xlarge": {"price": 1.4, "num_block_devices": 1},
-    "c3.8xlarge": {"price": 1.68, "num_block_devices": 2},
-    "i2.2xlarge": {"price": 1.705, "num_block_devices": 2},
-    "c4.8xlarge": {"price": 1.763, "num_block_devices": 0},
-    "cc2.8xlarge": {"price": 2, "num_block_devices": 4},
-    "cg1.4xlarge": {"price": 2.1, "num_block_devices": 2},
-    "m4.10xlarge": {"price": 2.52, "num_block_devices": 0},
-    "g2.8xlarge": {"price": 2.6, "num_block_devices": 2},
-    "d2.4xlarge": {"price": 2.76, "num_block_devices": 12},
-    "r3.8xlarge": {"price": 2.8, "num_block_devices": 2},
-    "hi1.4xlarge": {"price": 3.1, "num_block_devices": 2},
-    "i2.4xlarge": {"price": 3.41, "num_block_devices": 4},
-    "cr1.8xlarge": {"price": 3.5, "num_block_devices": 2},
-    "hs1.8xlarge": {"price": 4.6, "num_block_devices": 24},
-    "d2.8xlarge": {"price": 5.52, "num_block_devices": 24},
-    "i2.8xlarge": {"price": 6.82, "num_block_devices": 8}
+_EC2_INSTANCE_PRICE = {}
+with open(os.path.join(os.path.dirname(__file__), 'prices.txt')) as f:
+    for line in f:
+        if line[-1] == '\n':
+            line = line[:-1]
+        (instance_type, region, price) = line.split('\t')
+        _EC2_INSTANCE_PRICE[(instance_type, region)] = float(price)
+
+
+_EC2_INSTANCE_VOLUME_COUNT = {
+    'x1.16xlarge': 1,
+    'x1e.4xlarge': 1,
+    'x1e.16xlarge': 1,
+    'x1.32xlarge': 2,
+    'x1e.2xlarge': 1,
+    'd2.8xlarge': 24,
+    'd2.2xlarge': 6,
+    'd2.xlarge': 3,
+    'x1e.32xlarge': 2,
+    'd2.4xlarge': 12,
+    'x1e.8xlarge': 1,
+    'x1e.xlarge': 1,
+    'f1.4xlarge': 1,
+    'h1.8xlarge': 4,
+    'h1.16xlarge': 8,
+    'h1.4xlarge': 2,
+    'h1.2xlarge': 1,
 }
 
 
 _DEVICE_LETTER = []
-
 for i in xrange(1, 26):
     _DEVICE_LETTER.append(chr(ord('a')+i))
 for i in xrange(0, 26):
@@ -139,7 +111,7 @@ def _make_block_device_map(image, instance_type, root_volume_size=None):
         root_volume.size = root_volume_size
         block_device_mapping['/dev/xvda'] = root_volume
 
-    for i in xrange(_EC2_INSTANCE_INFO[instance_type]["num_block_devices"]):
+    for i in xrange(_EC2_INSTANCE_VOLUME_COUNT[instance_type]):
         block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
             boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
 
@@ -343,7 +315,7 @@ class Session(object):
             if self.count:
                 create_kwargs['count'] = self.count
 
-            price = _EC2_INSTANCE_INFO[self.instance_type]["price"]
+            price = _EC2_INSTANCE_PRICE[(self.instance_type, conn.ec2.region.name)]
             if self.price:
                 price = self.price
 
