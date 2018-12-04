@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
-import cjson
+import ujson
 import time
 
 import boto
@@ -58,7 +58,7 @@ def _load_configurations(*args):
         except:
             continue
     if body:
-        return cjson.decode(body)
+        return ujson.loads(body)
     else:
         return {}
 

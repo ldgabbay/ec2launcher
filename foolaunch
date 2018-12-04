@@ -5,7 +5,7 @@ import sys
 import os
 import getopt
 import base64
-import cjson
+import ujson
 
 import foolaunch
 
@@ -87,7 +87,7 @@ def parse_command_line(cfg):
         elif opt == '--security-groups':
             cfg.security_groups = arg.split(',')
         elif opt == '--tags':
-            cfg.tags = cjson.decode(arg)
+            cfg.tags = ujson.loads(arg)
         elif opt == '--root-volume-size':
             cfg.root_volume_size = int(arg)
         elif opt == '--load-balancers':
