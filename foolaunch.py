@@ -56,7 +56,12 @@ def _load_configurations(*args):
             body = None
             with open(os.path.expanduser(filename), 'rb') as f:
                 body = f.read()
-            for k, v in ujson.loads(body).iteritems():
+            try:
+                body = ujson.loads(body)
+            except:
+                print >> sys.stderr, "error parsing {}".format(filename)
+                continue
+            for k, v in body.iteritems():
                 result[k] = v
         except:
             pass
