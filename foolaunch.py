@@ -50,17 +50,17 @@ def _load_configurations(*args):
     filenames = ['./.foolaunch', '~/.foolaunch', '/etc/foolaunch']
     if args:
         filenames = list(args) + filenames
-    body = None
-    for filename in filenames:
+    result = {}
+    for filename in reversed(filenames):
         try:
+            body = None
             with open(os.path.expanduser(filename), 'rb') as f:
                 body = f.read()
+            for k, v in ujson.loads(body).iteritems():
+                result[k] = v
         except:
-            continue
-    if body:
-        return ujson.loads(body)
-    else:
-        return {}
+            pass
+    return result
 
 
 _EC2_INSTANCE_PRICE = {}
