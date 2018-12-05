@@ -116,7 +116,7 @@ def _make_block_device_map(image, instance_type, root_volume_size=None):
         root_volume.size = root_volume_size
         block_device_mapping['/dev/xvda'] = root_volume
 
-    for i in xrange(_EC2_INSTANCE_VOLUME_COUNT[instance_type]):
+    for i in xrange(_EC2_INSTANCE_VOLUME_COUNT.get(instance_type, 0)):
         block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
             boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
 
