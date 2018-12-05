@@ -17,7 +17,7 @@ def usage(*args):
     print >> sys.stderr, "Options and arguments:"
     print >> sys.stderr, "  -p, --profile <arg>          : aws credentials profile"
     print >> sys.stderr, "  -r, --region <arg>           : aws region"
-    print >> sys.stderr, "  --image <arg>                : ami image name"
+    print >> sys.stderr, "  --image-filters <arg>        : ami filters"
     print >> sys.stderr, "  -t, --instance-type <arg>    : ec2 instance type"
     print >> sys.stderr, "  --placement <arg>            : ec2 availability zone"
     print >> sys.stderr, "  --subnet <arg>               : vpc subnet name"
@@ -41,7 +41,7 @@ def parse_command_line(cfg):
         opts, args = getopt.getopt(sys.argv[1:], "p:r:t:n:", [
             "profile=",
             "region=",
-            "image=",
+            "image-filters=",
             "instance-type=",
             "placement=",
             "subnet=",
@@ -72,8 +72,8 @@ def parse_command_line(cfg):
             cfg.profile = arg
         elif opt in ('-r', '--region'):
             cfg.region = arg
-        elif opt == '--image':
-            cfg.image = arg
+        elif opt == '--image-filters':
+            cfg.image_filters = ujson.loads(arg)
         elif opt in ('-t', '--instance-type'):
             cfg.instance_type = arg
         elif opt == '--placement':

@@ -125,10 +125,10 @@ def _make_block_device_map(image, instance_type, root_volume_size=None):
     return None
 
 
-def _lookup_ami_id(ec2, name):
-    """Returns AMI id for `name`"""
+def _lookup_ami_id(ec2, image_filters):
+    """Returns AMI id that matches `image_filters`"""
 
-    images = ec2.get_all_images(filters={'name': [name]})
+    images = ec2.get_all_images(filters=image_filters)
     if len(images) != 1:
         raise RuntimeError('cannot find exactly one image')
     return images[0]
@@ -161,7 +161,7 @@ class _Context(object):
 _VALID_KEYS = {
         "profile",
         "region",
-        "image",
+        "image_filters",
         "instance_type",
         "placement",
         "subnet",
@@ -187,8 +187,8 @@ class Session(object):
         self.profile = None
         # aws region name
         self.region = None
-        # ami image name
-        self.image = None
+        # ami filters
+        self.image_filters = None
         # ec2 instance type
         self.instance_type = None
         # ec2 availability zone
@@ -267,10 +267,10 @@ class Session(object):
 
         # -- find ami image id --
 
-        ctx.image = _lookup_ami_id(conn.ec2, self.image)
+        ctx.image = _lookup_ami_id(conn.ec2, self.image_filters)
         ctx.image_id = ctx.image.id
 
-        print "ami image '{}' found as '{}'".format(self.image, ctx.image_id)
+        print "ami image '{}' found as '{}'".format(self.image_filters, ctx.image_id)
 
         # -- find placement or subnet id --
 
