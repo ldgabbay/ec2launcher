@@ -171,7 +171,7 @@ _VALID_KEYS = {
         "tags",
         "root_volume_size",
         "load_balancers",
-        "user_data_b64",
+        "user_data",
         "spot",
         "name",
         "count",
@@ -208,7 +208,7 @@ class Session(object):
         # elastic load balancers (list (str))
         self.load_balancers = None
         # instance user data (str)
-        self.user_data_b64 = None
+        self.user_data = None
         # use spot pricing
         self.spot = False
         # dry run
@@ -312,8 +312,8 @@ class Session(object):
         if ctx.block_device_mapping:
             create_kwargs['block_device_map'] = ctx.block_device_mapping
 
-        if self.user_data_b64:
-            create_kwargs['user_data'] = self.user_data_b64
+        if self.user_data:
+            create_kwargs['user_data'] = self.user_data
 
         instance_ids = []
         if self.spot:
