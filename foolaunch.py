@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import ujson
 import time
@@ -59,9 +57,9 @@ def _load_configurations(*args):
             try:
                 body = ujson.loads(body)
             except:
-                print >> sys.stderr, "error parsing {}".format(filename)
+                print("error parsing {}".format(filename), file=sys.stderr)
                 continue
-            for k, v in body.iteritems():
+            for k, v in body.items():
                 result[k] = v
         except:
             pass
@@ -99,10 +97,10 @@ _EC2_INSTANCE_VOLUME_COUNT = {
 
 
 _DEVICE_LETTER = []
-for i in xrange(1, 26):
+for i in range(1, 26):
     _DEVICE_LETTER.append(chr(ord('a')+i))
-for i in xrange(0, 26):
-    for j in xrange(0, 26):
+for i in range(0, 26):
+    for j in range(0, 26):
         _DEVICE_LETTER.append(chr(ord('a')+i) + chr(ord('a')+j))
 
 
@@ -116,7 +114,7 @@ def _make_block_device_map(image, instance_type, root_volume_size=None):
         root_volume.size = root_volume_size
         block_device_mapping['/dev/xvda'] = root_volume
 
-    for i in xrange(_EC2_INSTANCE_VOLUME_COUNT.get(instance_type, 0)):
+    for i in range(_EC2_INSTANCE_VOLUME_COUNT.get(instance_type, 0)):
         block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
             boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
 
@@ -229,7 +227,7 @@ class Session(object):
 
         total = {}
         self._apply(label, total)
-        for k, v in total.iteritems():
+        for k, v in total.items():
             setattr(self, k, v)
 
     def _apply(self, label, total):
@@ -247,7 +245,7 @@ class Session(object):
             for i in includes:
                 self._apply(i, total)
 
-        for k, v in configuration.iteritems():
+        for k, v in configuration.items():
             if k != "*":
                 if k not in _VALID_KEYS:
                     raise ValueError("invalid key {} in configuration {}".format(k, label))
@@ -263,14 +261,14 @@ class Session(object):
 
         ctx = _Context()
 
-        print "connected"
+        print("connected")
 
         # -- find ami image id --
 
         ctx.image = _lookup_ami_id(conn.ec2, self.image_filters)
         ctx.image_id = ctx.image.id
 
-        print "ami image '{}' found as '{}'".format(self.image_filters, ctx.image_id)
+        print("ami image '{}' found as '{}'".format(self.image_filters, ctx.image_id))
 
         # -- find placement or subnet id --
 
@@ -280,7 +278,7 @@ class Session(object):
                 if len(subnets) > 1:
                     raise ValueError("too many matching subnets")
                 ctx.subnet_id = subnets[0].id
-            print "subnet '{}' found as '{}'".format(self.subnet, ctx.subnet_id)
+            print("subnet '{}' found as '{}'".format(self.subnet, ctx.subnet_id))
 
         # -- create block device mapping --
 
@@ -329,12 +327,12 @@ class Session(object):
             for spot_request_id in spot_request_ids:
                 state = 'open'
                 while state == 'open':
-                    print "Waiting on spot request..."
+                    print("Waiting on spot request...")
                     time.sleep(5)
                     spot = conn.ec2.get_all_spot_instance_requests(spot_request_id)[0]
                     state = spot.state
                 if state != 'active':
-                    print "Failed to create instance."
+                    print("Failed to create instance.")
                     continue
                 instance_ids.append(spot.instance_id)
         else:
@@ -347,7 +345,7 @@ class Session(object):
                 instance_ids.append(i.id)
 
         if instance_ids:
-            print "Instances '{}' created.".format(', '.join(instance_ids))
+            print("Instances '{}' created.".format(', '.join(instance_ids)))
 
             if self.name:
                 conn.ec2.create_tags([i for i in instance_ids], {"Name": self.name}, dry_run=self.dry_run)
@@ -362,7 +360,7 @@ class Session(object):
             reservations = conn.ec2.get_all_instances(instance_ids)
             instances = [i for r in reservations for i in r.instances]
             for i in instances:
-                print "{}: {}".format(i.id, i.ip_address)
+                print("{}: {}".format(i.id, i.ip_address))
 
             return conn, instances
 

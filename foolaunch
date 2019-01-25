@@ -1,5 +1,4 @@
 #!/usr/bin/env pipenv-python
-# -*- coding: utf-8 -*-
 
 import sys
 import os
@@ -12,27 +11,27 @@ import foolaunch
 
 def usage(*args):
     if args:
-        print >> sys.stderr, "{0}: {1}".format(os.path.basename(sys.argv[0]), args[0])
-    print >> sys.stderr, "usage: {0} [option]* <cfg>".format(os.path.basename(sys.argv[0]))
-    print >> sys.stderr, "Options and arguments:"
-    print >> sys.stderr, "  -p, --profile <arg>          : aws credentials profile"
-    print >> sys.stderr, "  -r, --region <arg>           : aws region"
-    print >> sys.stderr, "  --image-filters <arg>        : ami filters"
-    print >> sys.stderr, "  -t, --instance-type <arg>    : ec2 instance type"
-    print >> sys.stderr, "  --placement <arg>            : ec2 availability zone"
-    print >> sys.stderr, "  --subnet <arg>               : vpc subnet name"
-    print >> sys.stderr, "  --key <arg>                  : ec2 key pair name"
-    print >> sys.stderr, "  --instance-profile <arg>     : iam instance profile name"
-    print >> sys.stderr, "  --security-groups <arg>      : ec2 security group names (comma separated)"
-    print >> sys.stderr, "  --tags <arg>                 : instance tags as JSON string"
-    print >> sys.stderr, "  --root-volume-size <arg>     : root volume size in GB"
-    print >> sys.stderr, "  --load-balancers <arg>       : load balancer names (comma separated)"
-    print >> sys.stderr, "  --user-data-file <arg>       : file containing instance user data"
-    print >> sys.stderr, "  --spot, --no-spot            : use spot pricing (or not)"
-    print >> sys.stderr, "  --dry-run                    : dry run"
-    print >> sys.stderr, "  --name <arg>                 : ec2 instance name"
-    print >> sys.stderr, "  -n, --count <arg>            : number of instances to launch"
-    print >> sys.stderr, "  --price <arg>                : max price"
+        print("{0}: {1}".format(os.path.basename(sys.argv[0]), args[0]), file=sys.stderr)
+    print("usage: {0} [option]* <cfg>".format(os.path.basename(sys.argv[0])), file=sys.stderr)
+    print("Options and arguments:", file=sys.stderr)
+    print("  -p, --profile <arg>          : aws credentials profile", file=sys.stderr)
+    print("  -r, --region <arg>           : aws region", file=sys.stderr)
+    print("  --image-filters <arg>        : ami filters", file=sys.stderr)
+    print("  -t, --instance-type <arg>    : ec2 instance type", file=sys.stderr)
+    print("  --placement <arg>            : ec2 availability zone", file=sys.stderr)
+    print("  --subnet <arg>               : vpc subnet name", file=sys.stderr)
+    print("  --key <arg>                  : ec2 key pair name", file=sys.stderr)
+    print("  --instance-profile <arg>     : iam instance profile name", file=sys.stderr)
+    print("  --security-groups <arg>      : ec2 security group names (comma separated)", file=sys.stderr)
+    print("  --tags <arg>                 : instance tags as JSON string", file=sys.stderr)
+    print("  --root-volume-size <arg>     : root volume size in GB", file=sys.stderr)
+    print("  --load-balancers <arg>       : load balancer names (comma separated)", file=sys.stderr)
+    print("  --user-data-file <arg>       : file containing instance user data", file=sys.stderr)
+    print("  --spot, --no-spot            : use spot pricing (or not)", file=sys.stderr)
+    print("  --dry-run                    : dry run", file=sys.stderr)
+    print("  --name <arg>                 : ec2 instance name", file=sys.stderr)
+    print("  -n, --count <arg>            : number of instances to launch", file=sys.stderr)
+    print("  --price <arg>                : max price", file=sys.stderr)
     sys.exit(1)
 
 
