@@ -127,8 +127,10 @@ def _lookup_ami_id(ec2, image_filters):
     """Returns AMI id that matches `image_filters`"""
 
     images = ec2.get_all_images(filters=image_filters)
+    if len(images) == 0:
+        raise RuntimeError('cannot find image')
     if len(images) != 1:
-        raise RuntimeError('cannot find exactly one image')
+        raise RuntimeError('found multiple images: {}'.format(', '.join([image.id for image in images])))
     return images[0]
 
 
