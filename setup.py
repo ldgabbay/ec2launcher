@@ -21,7 +21,7 @@ HERE = os.path.abspath(os.path.dirname(__file__))
 
 setup(
     name="foolaunch",
-    version=find_version("src", "foolaunch", "__init__.py"),
+    version=find_version("src", "__init__.py"),
     description="A utility for launching an ec2 server from a repository of templates.",
     long_description=read(HERE, "README.md"),
     long_description_content_type="text/markdown",
@@ -44,7 +44,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     packages=["foolaunch"],
-    package_dir={"foolaunch": "src/foolaunch"},
+    package_dir={"foolaunch": "src"},
     package_data={"foolaunch": ["prices.txt"]},
     entry_points={
         "console_scripts": [
@@ -55,7 +55,7 @@ setup(
     install_requires=[
         "ujson~=1.35",
         "foostache~=1.2",
-        "boto",
+        "boto~=2.49",
     ],
     python_requires=">=3.6, <4",
 )
