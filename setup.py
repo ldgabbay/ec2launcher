@@ -53,7 +53,7 @@ setup(
     },
     test_suite="tests",
     install_requires=[
-        "foostache~=1.2",
+        "foostache~=1.3",
         "boto~=2.49",
     ],
     python_requires=">=3.6, <4",
