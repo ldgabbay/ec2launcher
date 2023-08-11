@@ -1,7 +1,8 @@
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
+import sys
 import os
-import ujson
+import json
 import time
 
 import boto
@@ -57,7 +58,7 @@ def _load_configurations(*args):
             with open(os.path.expanduser(filename), 'rb') as f:
                 body = f.read()
             try:
-                body = ujson.loads(body)
+                body = json.loads(body)
             except:
                 print("error parsing {}".format(filename), file=sys.stderr)
                 continue

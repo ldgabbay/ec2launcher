@@ -40,6 +40,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3 :: Only",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
@@ -53,8 +54,7 @@ setup(
     },
     test_suite="tests",
     install_requires=[
-        "ujson~=1.35",
-        "foostache~=1.2",
+        "foostache~=1.3",
         "boto~=2.49",
     ],
     python_requires=">=3.6, <4",
