@@ -1,6 +1,3 @@
-__pycache__/
-*.pyc
-
-build/
-dist/
-foolaunch.egg-info/
+/build/
+/dist/
+/src/foolaunch.egg-info/
