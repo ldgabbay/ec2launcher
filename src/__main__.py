@@ -4,7 +4,7 @@ import sys
 import os
 import getopt
 import base64
-import ujson
+import json
 
 import foolaunch
 
@@ -72,7 +72,7 @@ def parse_command_line(cfg):
         elif opt in ('-r', '--region'):
             cfg.region = arg
         elif opt == '--image-filters':
-            cfg.image_filters = ujson.loads(arg)
+            cfg.image_filters = json.loads(arg)
         elif opt in ('-t', '--instance-type'):
             cfg.instance_type = arg
         elif opt == '--placement':
@@ -86,7 +86,7 @@ def parse_command_line(cfg):
         elif opt == '--security-groups':
             cfg.security_groups = arg.split(',')
         elif opt == '--tags':
-            cfg.tags = ujson.loads(arg)
+            cfg.tags = json.loads(arg)
         elif opt == '--root-volume-size':
             cfg.root_volume_size = int(arg)
         elif opt == '--load-balancers':

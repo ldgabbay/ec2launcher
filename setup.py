@@ -53,7 +53,6 @@ setup(
     },
     test_suite="tests",
     install_requires=[
-        "ujson~=1.35",
         "foostache~=1.2",
         "boto~=2.49",
     ],
