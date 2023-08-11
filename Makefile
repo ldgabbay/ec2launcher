@@ -1,5 +1,3 @@
-ROOT_DIR := $(shell pwd)
-
 PKG_NAME := $(shell python3 ./setup.py --name)
 PKG_VERSION := $(shell python3 ./setup.py --version)
 
@@ -7,16 +5,14 @@ BUILD_DIR = build
 DIST_DIR = dist
 
 SOURCE_FILES := $(shell find src -type f -name \*.py | sed 's: :\\ :g')
-GENERATED_FILES = \
-	$(PKG_NAME).egg-info \
-	$(PKG_NAME)-$(PKG_VERSION).tar.gz \
-	$(PKG_NAME)-$(PKG_VERSION)-py3-none-any.whl
 
 
 .PHONY : dist clean pypi pypitest
 
-dist : $(SOURCE_FILES)
-	python3 ./setup.py sdist --dist-dir $(DIST_DIR) bdist_wheel --dist-dir $(DIST_DIR) --bdist-dir $(BUILD_DIR)
+dist : $(DIST_DIR)/$(PKG_NAME)-$(PKG_VERSION)-py3-none-any.whl
+
+$(DIST_DIR)/$(PKG_NAME)-$(PKG_VERSION)-py3-none-any.whl : $(SOURCE_FILES)
+	python3 ./setup.py bdist_wheel --dist-dir $(DIST_DIR) --bdist-dir $(BUILD_DIR)
 
 clean :
 	rm -rf $(BUILD_DIR) $(DIST_DIR) $(PKG_NAME).egg-info
@@ -24,7 +20,7 @@ clean :
 	find . -name \*.pyc -type f -delete
 
 pypi : dist
-	twine upload -r pypi $(DIST_DIR)/*
+	twine upload -r pypi $(DIST_DIR)/$(PKG_NAME)-$(PKG_VERSION)-py3-none-any.whl
 
 testpypi : dist
-	twine upload -r testpypi $(DIST_DIR)/*
+	twine upload -r testpypi $(DIST_DIR)/$(PKG_NAME)-$(PKG_VERSION)-py3-none-any.whl
