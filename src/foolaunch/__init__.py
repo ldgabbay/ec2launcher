@@ -1,5 +1,3 @@
-__version__ = "1.1.0"
-
 import sys
 import os
 import json
@@ -11,6 +9,7 @@ import boto.ec2.blockdevicemapping
 import boto.ec2.elb
 import boto.s3
 import boto.vpc
+import boto3
 
 r"""
 This script simplifies the process to spawn instances on EC2 built from scratch
@@ -69,13 +68,38 @@ def _load_configurations(*args):
     return result
 
 
+# TODO couldn't figure out how to add prices.txt file to pyproject.toml, so removing for now
+# # Create a Boto3 client for AWS Pricing
+# pricing_client = boto3.client('pricing')
+
+# # Define filters to narrow down the product search
+# filters = [
+#     {'Type': 'TERM_MATCH', 'Field': 'productFamily', 'Value': 'Compute Instance'}
+# ]
+
+# # Get pricing data
+# response = pricing_client.get_products(
+#     ServiceCode='AmazonEC2',
+#     Filters=filters
+# )
+
+# # Extract instance types and pricing information
+# for product in response['PriceList']:
+#     product = json.loads(product)  # Convert JSON string to dictionary
+#     instance_type = product['product']['attributes']['instanceType']
+#     on_demand = product['terms']['OnDemand']
+#     for term_key, term_value in on_demand.items():
+#         stuff = list(term_value['priceDimensions'].values())[0]
+#         print(f"{instance_type}\t{stuff['pricePerUnit']}")
+
+
 _EC2_INSTANCE_PRICE = {}
-with open(os.path.join(os.path.dirname(__file__), 'prices.txt')) as f:
-    for line in f:
-        if line[-1] == '\n':
-            line = line[:-1]
-        (instance_type, region, price) = line.split('\t')
-        _EC2_INSTANCE_PRICE[(instance_type, region)] = float(price)
+# with open(os.path.join(os.path.dirname(__file__), 'prices.txt')) as f:
+#     for line in f:
+#         if line[-1] == '\n':
+#             line = line[:-1]
+#         (instance_type, region, price) = line.split('\t')
+#         _EC2_INSTANCE_PRICE[(instance_type, region)] = float(price)
 
 
 _EC2_INSTANCE_VOLUME_COUNT = {
@@ -149,6 +173,8 @@ class _Connections(object):
         self.s3 = None
         self.vpc = None
         self.elb = None
+        self.session = None
+        self.ec2_client = None
 
 
 class _Context(object):
@@ -260,9 +286,11 @@ class Session(object):
         conn = _Connections()
 
         conn.ec2 = boto.ec2.connect_to_region(self.region, profile_name=self.profile)
-        conn.s3 = boto.s3.connect_to_region(self.region, profile_name=self.profile)
         conn.vpc = boto.vpc.connect_to_region(self.region, profile_name=self.profile)
         conn.elb = boto.ec2.elb.connect_to_region(self.region, profile_name=self.profile)
+
+        conn.session = boto3.Session()
+        conn.ec2_client = conn.session.client('ec2')
 
         ctx = _Context()
 
@@ -345,9 +373,30 @@ class Session(object):
                 create_kwargs['min_count'] = self.count
                 create_kwargs['max_count'] = self.count
 
-            result = conn.ec2.run_instances(ctx.image_id, **create_kwargs)
-            for i in result.instances:
-                instance_ids.append(i.id)
+            key_mapping = {
+                'instance_type': 'InstanceType',
+                'dry_run': 'DryRun',
+                'subnet_id': 'SubnetId',
+                'placement': 'Placement',
+                'key_name': 'KeyName',
+                'instance_profile_name': 'IamInstanceProfile',
+                'security_group_ids': 'SecurityGroupIds',
+                'block_device_map': 'BlockDeviceMapping',
+                'user_data': 'UserData',
+                'count': 'Count',
+                'min_count': 'MinCount',
+                'max_count': 'MaxCount',
+            }
+
+            create_kwargs3 = {key_mapping[old_key]: value for old_key, value in create_kwargs.items()}
+            create_kwargs3['ImageId'] = ctx.image_id
+            create_kwargs3['IamInstanceProfile'] = {'Name': create_kwargs['instance_profile_name']}
+            create_kwargs3['MinCount'] = 1
+            create_kwargs3['MaxCount'] = 1
+            create_kwargs3['SubnetId'] = ctx.subnet_id
+            result = conn.ec2_client.run_instances(**create_kwargs3)
+            for i in result['Instances']:
+                instance_ids.append(i['InstanceId'])
 
         if instance_ids:
             print("Instances '{}' created.".format(', '.join(instance_ids)))
