@@ -322,29 +322,29 @@ class Session(object):
         ctx.security_group_ids = _lookup_security_group_ids(conn.ec2, self.security_groups)
 
         create_kwargs = {
-            'instance_type': self.instance_type,
-            'dry_run': self.dry_run
+            'InstanceType': self.instance_type,
+            'DryRun': self.dry_run
         }
 
         if ctx.subnet_id:
-            create_kwargs['subnet_id'] = ctx.subnet_id
+            create_kwargs['SubnetId'] = ctx.subnet_id
         elif self.placement:
-            create_kwargs['placement'] = self.placement
+            create_kwargs['Placement'] = self.placement
 
         if self.key:
-            create_kwargs['key_name'] = self.key
+            create_kwargs['KeyName'] = self.key
 
         if self.instance_profile:
-            create_kwargs['instance_profile_name'] = self.instance_profile
+            create_kwargs['IamInstanceProfile'] = {'Name': self.instance_profile}
 
         if ctx.security_group_ids:
-            create_kwargs['security_group_ids'] = ctx.security_group_ids
+            create_kwargs['SecurityGroupIds'] = ctx.security_group_ids
 
         if ctx.block_device_mapping:
-            create_kwargs['block_device_map'] = ctx.block_device_mapping
+            create_kwargs['BlockDeviceMapping'] = ctx.block_device_mapping
 
         if self.user_data:
-            create_kwargs['user_data'] = self.user_data
+            create_kwargs['UserData'] = self.user_data
 
         instance_ids = []
         if self.spot:
@@ -370,31 +370,10 @@ class Session(object):
                 instance_ids.append(spot.instance_id)
         else:
             if self.count:
-                create_kwargs['min_count'] = self.count
-                create_kwargs['max_count'] = self.count
+                create_kwargs['MinCount'] = self.count
+                create_kwargs['MaxCount'] = self.count
 
-            key_mapping = {
-                'instance_type': 'InstanceType',
-                'dry_run': 'DryRun',
-                'subnet_id': 'SubnetId',
-                'placement': 'Placement',
-                'key_name': 'KeyName',
-                'instance_profile_name': 'IamInstanceProfile',
-                'security_group_ids': 'SecurityGroupIds',
-                'block_device_map': 'BlockDeviceMapping',
-                'user_data': 'UserData',
-                'count': 'Count',
-                'min_count': 'MinCount',
-                'max_count': 'MaxCount',
-            }
-
-            create_kwargs3 = {key_mapping[old_key]: value for old_key, value in create_kwargs.items()}
-            create_kwargs3['ImageId'] = ctx.image_id
-            create_kwargs3['IamInstanceProfile'] = {'Name': create_kwargs['instance_profile_name']}
-            create_kwargs3['MinCount'] = 1
-            create_kwargs3['MaxCount'] = 1
-            create_kwargs3['SubnetId'] = ctx.subnet_id
-            result = conn.ec2_client.run_instances(**create_kwargs3)
+            result = conn.ec2_client.run_instances(**create_kwargs)
             for i in result['Instances']:
                 instance_ids.append(i['InstanceId'])
 
