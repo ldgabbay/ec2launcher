@@ -374,6 +374,11 @@ class Session(object):
                 create_kwargs['MaxCount'] = self.count
 
             create_kwargs['ImageId'] = ctx.image_id
+            create_kwargs['InstanceMetadataOptions'] = {
+                'HttpTokens': 'required',
+                'HttpPutResponseHopLimit': 2
+            }
+
             result = conn.ec2_client.run_instances(**create_kwargs)
             for i in result['Instances']:
                 instance_ids.append(i['InstanceId'])
