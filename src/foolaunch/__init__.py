@@ -372,9 +372,12 @@ class Session(object):
             if self.count:
                 create_kwargs['MinCount'] = self.count
                 create_kwargs['MaxCount'] = self.count
+            else:
+                create_kwargs['MinCount'] = 1
+                create_kwargs['MaxCount'] = 1
 
             create_kwargs['ImageId'] = ctx.image_id
-            create_kwargs['InstanceMetadataOptions'] = {
+            create_kwargs['MetadataOptions'] = {
                 'HttpTokens': 'required',
                 'HttpPutResponseHopLimit': 2
             }
