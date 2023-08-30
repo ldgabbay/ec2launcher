@@ -3,11 +3,6 @@ import os
 import json
 import time
 
-import boto
-import boto.ec2
-import boto.ec2.blockdevicemapping
-import boto.ec2.elb
-import boto.vpc
 import boto3
 
 r"""
@@ -43,6 +38,9 @@ cfg.apply("name")
 ...
 foolaunch.launch(cfg)
 """
+
+# https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RunInstances.html
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html
 
 
 def _load_configurations(*args):
@@ -130,44 +128,49 @@ for i in range(0, 26):
         _DEVICE_LETTER.append(chr(ord('a')+i) + chr(ord('a')+j))
 
 
-def _make_block_device_map(image, instance_type, root_volume_size=None):
-    import boto.ec2.blockdevicemapping
-
-    block_device_mapping = boto.ec2.blockdevicemapping.BlockDeviceMapping()
-
-    if root_volume_size and (image.block_device_mapping['/dev/xvda'].size != root_volume_size):
-        root_volume = boto.ec2.blockdevicemapping.BlockDeviceType()
-        root_volume.size = root_volume_size
-        block_device_mapping['/dev/xvda'] = root_volume
-
-    for i in range(_EC2_INSTANCE_VOLUME_COUNT.get(instance_type, 0)):
-        block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
-            boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
-
-    if len(block_device_mapping) > 0:
-        return block_device_mapping
-    return None
-
-
-def _make_block_device_mappings(root_volume_size):
+def _make_block_device_mappings(image, root_volume_size=None):
     if root_volume_size is None:
         return None
+
+    block_device_mappings = image['BlockDeviceMappings']
+
+    if len(block_device_mappings) != 1:
+        raise RuntimeError('unexpected number of block devices in image')
+
+    if block_device_mappings[0]['Ebs']['VolumeSize'] == root_volume_size:
+        return None
+    
+    # TODO: add emphemeral stores?
+    # for i in range(_EC2_INSTANCE_VOLUME_COUNT.get(instance_type, 0)):
+    #     block_device_mapping['/dev/sd' + _DEVICE_LETTER[i]] = \
+    #         boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name="ephemeral{}".format(i))
+
     return [
         {
-            'DeviceName': '/dev/xvda',
+            'DeviceName': block_device_mappings[0]['DeviceName'],
             'Ebs': {
-                'DeleteOnTermination': True,
+                'DeleteOnTermination': block_device_mappings[0]['Ebs']['DeleteOnTermination'],
                 'VolumeSize': root_volume_size,
-                'VolumeType': 'gp3'
+                'VolumeType': block_device_mappings[0]['Ebs']['VolumeType']
             }
         }
     ]
 
 
-def _lookup_ami_id(ec2, image_filters):
+def convert_dict_to_filters(input_dict):
+    filters_list = []
+    
+    for key, value in input_dict.items():
+        filter_dict = {'Name': key, 'Values': [value]}
+        filters_list.append(filter_dict)
+    
+    return filters_list
+
+
+def _lookup_ami(ec2, image_filters):
     """Returns AMI id that matches `image_filters`"""
 
-    images = ec2.get_all_images(filters=image_filters)
+    images = ec2.describe_images(Filters=convert_dict_to_filters(image_filters))['Images']
     if len(images) == 0:
         raise RuntimeError('cannot find image')
     if len(images) != 1:
@@ -178,14 +181,12 @@ def _lookup_ami_id(ec2, image_filters):
 def _lookup_security_group_ids(ec2, names):
     if not names:
         return None
-    return [x.id for x in ec2.get_all_security_groups(filters={'group_name': names})]
+    security_groups = ec2.describe_security_groups(Filters=[{'Name': 'group-name', 'Values': names}])
+    return [i['GroupId'] for i in security_groups['SecurityGroups']]
 
 
 class _Connections(object):
     def __init__(self):
-        self.old_ec2 = None
-        self.old_vpc = None
-        self.old_elb = None
         self.session = None
         self.ec2 = None
 
@@ -194,8 +195,7 @@ class _Context(object):
     def __init__(self):
         self.image = None
         self.image_id = None
-        self.block_device_mapping = None
-        self.security_group_ids = None
+        self.block_device_mappings = None
         self.subnet_id = None
 
 
@@ -298,10 +298,6 @@ class Session(object):
     def launch(self):
         conn = _Connections()
 
-        conn.old_ec2 = boto.ec2.connect_to_region(self.region, profile_name=self.profile)
-        conn.old_vpc = boto.vpc.connect_to_region(self.region, profile_name=self.profile)
-        conn.old_elb = boto.ec2.elb.connect_to_region(self.region, profile_name=self.profile)
-
         conn.session = boto3.Session(region_name=self.region, profile_name=self.profile)
         conn.ec2 = conn.session.client('ec2')
 
@@ -311,29 +307,28 @@ class Session(object):
 
         # -- find ami image id --
 
-        ctx.image = _lookup_ami_id(conn.old_ec2, self.image_filters)
-        ctx.image_id = ctx.image.id
+        ctx.image = _lookup_ami(conn.ec2, self.image_filters)
+        ctx.image_id = ctx.image['ImageId']
 
         print("ami image '{}' found as '{}'".format(self.image_filters, ctx.image_id))
 
         # -- find placement or subnet id --
 
         if self.subnet:
-            subnets = [s for s in conn.old_vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == self.subnet)]
-            if subnets:
-                if len(subnets) > 1:
-                    raise ValueError("too many matching subnets")
-                ctx.subnet_id = subnets[0].id
+            subnets = conn.ec2.describe_subnets(Filters=[{'Name': 'tag:Name', 'Values': [self.subnet]}])
+            if len(subnets) == 0:
+                raise ValueError("no matching subnets")
+            if len(subnets) != 1:
+                raise ValueError("too many matching subnets")
+            ctx.subnet_id = subnets[0]['SubnetId']
             print("subnet '{}' found as '{}'".format(self.subnet, ctx.subnet_id))
 
         # -- create block device mapping --
 
-        # ctx.block_device_mapping = _make_block_device_map(ctx.image, self.instance_type, self.root_volume_size)
-        ctx.block_device_mapping = _make_block_device_mappings(self.root_volume_size)
+        # ctx.block_device_mappings = _make_block_device_map(ctx.image, self.instance_type, self.root_volume_size)
+        ctx.block_device_mappings = _make_block_device_mappings(ctx.image, self.root_volume_size)
 
         # -- find security group ids --
-
-        ctx.security_group_ids = _lookup_security_group_ids(conn.old_ec2, self.security_groups)
 
         create_kwargs = {
             'InstanceType': self.instance_type,
@@ -351,17 +346,18 @@ class Session(object):
         if self.instance_profile:
             create_kwargs['IamInstanceProfile'] = {'Name': self.instance_profile}
 
-        if ctx.security_group_ids:
-            create_kwargs['SecurityGroupIds'] = ctx.security_group_ids
+        if self.security_groups:
+            create_kwargs['SecurityGroups'] = self.security_groups
 
-        if ctx.block_device_mapping:
-            create_kwargs['BlockDeviceMappings'] = ctx.block_device_mapping
+        if ctx.block_device_mappings:
+            create_kwargs['BlockDeviceMappings'] = ctx.block_device_mappings
 
         if self.user_data:
             create_kwargs['UserData'] = self.user_data
 
         instance_ids = []
         if self.spot:
+            # TODO: make spot work
             if self.count:
                 create_kwargs['count'] = self.count
 
@@ -404,19 +400,33 @@ class Session(object):
             print("Instances '{}' created.".format(', '.join(instance_ids)))
 
             if self.name:
-                conn.old_ec2.create_tags([i for i in instance_ids], {"Name": self.name}, dry_run=self.dry_run)
+                conn.ec2.create_tags(Resources=instance_ids, Tags=[{'Key': 'Name', 'Value': self.name}], DryRun=self.dry_run)
 
             if self.tags:
-                conn.old_ec2.create_tags([i for i in instance_ids], self.tags, dry_run=self.dry_run)
+                tags = [{'Key': k, 'Value': v} for (k, v) in self.tags.items()]
+                conn.ec2.create_tags(Resources=instance_ids, Tags=tags, DryRun=self.dry_run)
 
             if not self.dry_run and self.load_balancers:
+                # TODO: make load balancers work
+                # # Initialize the ELBV2 client
+                # elbv2_client = boto3.client('elbv2')
+
+                # # Specify the target group ARN and instance IDs
+                # target_group_arn = 'arn:aws:elasticloadbalancing:REGION:ACCOUNT_ID:targetgroup/TARGET_GROUP_NAME/GENERATED_ID'
+                # instance_ids = ['INSTANCE_ID_1', 'INSTANCE_ID_2']
+
+                # # Register instances with the target group
+                # response = elbv2_client.register_targets(
+                #     TargetGroupArn=target_group_arn,
+                #     Targets=[{'Id': instance_id} for instance_id in instance_ids]
+                # )
                 for load_balancer in self.load_balancers:
                     conn.old_elb.register_instances(load_balancer, [i for i in instance_ids])
 
-            reservations = conn.old_ec2.get_all_instances(instance_ids)
-            instances = [i for r in reservations for i in r.instances]
-            for i in instances:
-                print("{}: {}".format(i.id, i.ip_address))
+            response = conn.ec2.describe_instances(InstanceIds=instance_ids)
+            instances = [r['Instances'][0] for r in response['Reservations']]
+            for instance in instances:
+                print("{}: {}".format(instance['InstanceId'], instance['PublicIpAddress']))
 
             return conn, instances
 
