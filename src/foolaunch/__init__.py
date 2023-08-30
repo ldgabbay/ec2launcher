@@ -150,6 +150,21 @@ def _make_block_device_map(image, instance_type, root_volume_size=None):
     return None
 
 
+def _make_block_device_mappings(root_volume_size):
+    if root_volume_size is None:
+        return None
+    return [
+        {
+            'DeviceName': '/dev/xvda',
+            'Ebs': {
+                'DeleteOnTermination': True,
+                'VolumeSize': root_volume_size,
+                'VolumeType': 'gp3'
+            }
+        }
+    ]
+
+
 def _lookup_ami_id(ec2, image_filters):
     """Returns AMI id that matches `image_filters`"""
 
@@ -315,7 +330,8 @@ class Session(object):
 
         # -- create block device mapping --
 
-        ctx.block_device_mapping = _make_block_device_map(ctx.image, self.instance_type, self.root_volume_size)
+        # ctx.block_device_mapping = _make_block_device_map(ctx.image, self.instance_type, self.root_volume_size)
+        ctx.block_device_mapping = _make_block_device_mappings(self.root_volume_size)
 
         # -- find security group ids --
 
@@ -341,7 +357,7 @@ class Session(object):
             create_kwargs['SecurityGroupIds'] = ctx.security_group_ids
 
         if ctx.block_device_mapping:
-            create_kwargs['BlockDeviceMapping'] = ctx.block_device_mapping
+            create_kwargs['BlockDeviceMappings'] = ctx.block_device_mapping
 
         if self.user_data:
             create_kwargs['UserData'] = self.user_data
