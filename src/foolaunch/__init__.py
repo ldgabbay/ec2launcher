@@ -7,7 +7,6 @@ import boto
 import boto.ec2
 import boto.ec2.blockdevicemapping
 import boto.ec2.elb
-import boto.s3
 import boto.vpc
 import boto3
 
@@ -184,12 +183,11 @@ def _lookup_security_group_ids(ec2, names):
 
 class _Connections(object):
     def __init__(self):
-        self.ec2 = None
-        self.s3 = None
-        self.vpc = None
-        self.elb = None
+        self.old_ec2 = None
+        self.old_vpc = None
+        self.old_elb = None
         self.session = None
-        self.ec2_client = None
+        self.ec2 = None
 
 
 class _Context(object):
@@ -300,12 +298,12 @@ class Session(object):
     def launch(self):
         conn = _Connections()
 
-        conn.ec2 = boto.ec2.connect_to_region(self.region, profile_name=self.profile)
-        conn.vpc = boto.vpc.connect_to_region(self.region, profile_name=self.profile)
-        conn.elb = boto.ec2.elb.connect_to_region(self.region, profile_name=self.profile)
+        conn.old_ec2 = boto.ec2.connect_to_region(self.region, profile_name=self.profile)
+        conn.old_vpc = boto.vpc.connect_to_region(self.region, profile_name=self.profile)
+        conn.old_elb = boto.ec2.elb.connect_to_region(self.region, profile_name=self.profile)
 
-        conn.session = boto3.Session()
-        conn.ec2_client = conn.session.client('ec2')
+        conn.session = boto3.Session(region_name=self.region, profile_name=self.profile)
+        conn.ec2 = conn.session.client('ec2')
 
         ctx = _Context()
 
@@ -313,7 +311,7 @@ class Session(object):
 
         # -- find ami image id --
 
-        ctx.image = _lookup_ami_id(conn.ec2, self.image_filters)
+        ctx.image = _lookup_ami_id(conn.old_ec2, self.image_filters)
         ctx.image_id = ctx.image.id
 
         print("ami image '{}' found as '{}'".format(self.image_filters, ctx.image_id))
@@ -321,7 +319,7 @@ class Session(object):
         # -- find placement or subnet id --
 
         if self.subnet:
-            subnets = [s for s in conn.vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == self.subnet)]
+            subnets = [s for s in conn.old_vpc.get_all_subnets() if ("Name" in s.tags) and (s.tags["Name"] == self.subnet)]
             if subnets:
                 if len(subnets) > 1:
                     raise ValueError("too many matching subnets")
@@ -335,7 +333,7 @@ class Session(object):
 
         # -- find security group ids --
 
-        ctx.security_group_ids = _lookup_security_group_ids(conn.ec2, self.security_groups)
+        ctx.security_group_ids = _lookup_security_group_ids(conn.old_ec2, self.security_groups)
 
         create_kwargs = {
             'InstanceType': self.instance_type,
@@ -367,18 +365,18 @@ class Session(object):
             if self.count:
                 create_kwargs['count'] = self.count
 
-            price = _EC2_INSTANCE_PRICE[(self.instance_type, conn.ec2.region.name)]
+            price = _EC2_INSTANCE_PRICE[(self.instance_type, conn.old_ec2.region.name)]
             if self.price:
                 price = self.price
 
-            result = conn.ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
+            result = conn.old_ec2.request_spot_instances(price, ctx.image_id, **create_kwargs)
             spot_request_ids = [x.id for x in result]
             for spot_request_id in spot_request_ids:
                 state = 'open'
                 while state == 'open':
                     print("Waiting on spot request...")
                     time.sleep(5)
-                    spot = conn.ec2.get_all_spot_instance_requests(spot_request_id)[0]
+                    spot = conn.old_ec2.get_all_spot_instance_requests(spot_request_id)[0]
                     state = spot.state
                 if state != 'active':
                     print("Failed to create instance.")
@@ -398,7 +396,7 @@ class Session(object):
                 'HttpPutResponseHopLimit': 2
             }
 
-            result = conn.ec2_client.run_instances(**create_kwargs)
+            result = conn.ec2.run_instances(**create_kwargs)
             for i in result['Instances']:
                 instance_ids.append(i['InstanceId'])
 
@@ -406,16 +404,16 @@ class Session(object):
             print("Instances '{}' created.".format(', '.join(instance_ids)))
 
             if self.name:
-                conn.ec2.create_tags([i for i in instance_ids], {"Name": self.name}, dry_run=self.dry_run)
+                conn.old_ec2.create_tags([i for i in instance_ids], {"Name": self.name}, dry_run=self.dry_run)
 
             if self.tags:
-                conn.ec2.create_tags([i for i in instance_ids], self.tags, dry_run=self.dry_run)
+                conn.old_ec2.create_tags([i for i in instance_ids], self.tags, dry_run=self.dry_run)
 
             if not self.dry_run and self.load_balancers:
                 for load_balancer in self.load_balancers:
-                    conn.elb.register_instances(load_balancer, [i for i in instance_ids])
+                    conn.old_elb.register_instances(load_balancer, [i for i in instance_ids])
 
-            reservations = conn.ec2.get_all_instances(instance_ids)
+            reservations = conn.old_ec2.get_all_instances(instance_ids)
             instances = [i for r in reservations for i in r.instances]
             for i in instances:
                 print("{}: {}".format(i.id, i.ip_address))
